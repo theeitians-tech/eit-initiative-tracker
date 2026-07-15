@@ -70,7 +70,7 @@ export class TrackerView extends ItemView {
 		} else {
 			const list = container.createDiv({ cls: "eit-it-combatant-list" });
 			for (const combatant of sorted) {
-				this.renderRow(list, combatant);
+				this.renderCombatantTable(list, combatant);
 			}
 		}
 
@@ -132,7 +132,7 @@ export class TrackerView extends ItemView {
 				const currentIndex = sorted.findIndex((c) => c.id === s.activeCombatantId);
 				let nextIndex = currentIndex + 1;
 				if (currentIndex === -1) {
-					nextIndex = 0; // active combatant was removed; restart at top
+					nextIndex = 0;
 				} else if (nextIndex >= sorted.length) {
 					nextIndex = 0;
 					s.round += 1;
@@ -141,8 +141,6 @@ export class TrackerView extends ItemView {
 				s.activeCombatantId = sorted[nextIndex].id;
 			}
 
-			// Legendary Actions refill for everyone at the start of a new
-			// round (not per-turn — simpler to track at the table).
 			if (roundAdvanced) {
 				for (const c of s.combatants) {
 					if (c.legendaryActionsMax > 0) {
@@ -174,17 +172,29 @@ export class TrackerView extends ItemView {
 		}
 	}
 
-	private renderRow(list: HTMLElement, combatant: Combatant) {
-		const row = list.createDiv({ cls: "eit-it-row" });
+	/**
+	 * Renders one combatant as its own bordered table: a Turn Tracker
+	 * column spanning every row, then label/spacer/value columns for
+	 * Name+Init, AC+Condition, HP+HP Toggle, and (if applicable) LR+LA.
+	 */
+	private renderCombatantTable(list: HTMLElement, combatant: Combatant) {
+		const hasLegendary = combatant.legendaryResistanceMax > 0 || combatant.legendaryActionsMax > 0;
+		const rowCount = hasLegendary ? 4 : 3;
 		const isActive = this.store.state.activeCombatantId === combatant.id;
-		if (isActive) row.addClass("eit-it-row-active");
 
-		row.createDiv({ cls: "eit-it-turn-indicator" });
+		const table = list.createEl("table", { cls: "eit-it-combatant-table" });
+		if (isActive) table.addClass("eit-it-table-active");
 
-		const grid = row.createDiv({ cls: "eit-it-row-grid" });
+		// ---- Row 1: Turn Tracker | Name | spacer | Initiative ----
+		const row1 = table.createEl("tr");
 
-		// ---- Row 1: Name | Initiative ----
-		const nameCell = grid.createDiv({ cls: "eit-it-cell eit-it-cell-name" });
+		const turnCell = row1.createEl("td", {
+			cls: "eit-it-turn-cell",
+			attr: { rowspan: String(rowCount) },
+		});
+		turnCell.createDiv({ cls: "eit-it-turn-indicator" });
+
+		const nameCell = row1.createEl("td", { cls: "eit-it-label-cell eit-it-name-cell" });
 		nameCell.createEl("span", { text: combatant.name, cls: "eit-it-row-name" });
 		if (combatant.isGroup) {
 			const splitLink = nameCell.createEl("span", {
@@ -200,11 +210,18 @@ export class TrackerView extends ItemView {
 				});
 			};
 		}
+		const removeBtn = nameCell.createEl("button", { text: "×", cls: "eit-it-remove-btn" });
+		removeBtn.onclick = () => {
+			this.store.update((s) => {
+				s.combatants = s.combatants.filter((c) => c.id !== combatant.id);
+			});
+		};
 
-		const initCell = grid.createDiv({ cls: "eit-it-cell eit-it-cell-init" });
+		row1.createEl("td", { cls: "eit-it-spacer-cell" });
+
+		const initCell = row1.createEl("td", { cls: "eit-it-value-cell" });
 		const initInput = initCell.createEl("input", {
-			attr: { type: "number", style: "width: 3.5em;" },
-			cls: "eit-it-init-input",
+			attr: { type: "number", style: "width: 4em;" },
 		});
 		initInput.value = combatant.initiative === null ? "" : String(combatant.initiative);
 		initInput.onchange = () => {
@@ -214,21 +231,16 @@ export class TrackerView extends ItemView {
 				if (c) c.initiative = val === "" ? null : parseInt(val, 10);
 			});
 		};
-		const removeBtn = initCell.createEl("button", { text: "×", cls: "eit-it-remove-btn" });
-		removeBtn.onclick = () => {
-			this.store.update((s) => {
-				s.combatants = s.combatants.filter((c) => c.id !== combatant.id);
-			});
-		};
 
-		// ---- Row 2: AC (static) | Condition ----
-		const acCell = grid.createDiv({ cls: "eit-it-cell" });
-		acCell.createEl("span", {
-			text: `AC ${combatant.ac ?? "—"}`,
-			cls: "eit-it-static-stat",
-		});
+		// ---- Row 2: AC | spacer | Condition ----
+		const row2 = table.createEl("tr");
 
-		const condCell = grid.createDiv({ cls: "eit-it-cell eit-it-cell-conditions" });
+		const acCell = row2.createEl("td", { cls: "eit-it-label-cell" });
+		acCell.createEl("span", { text: `AC ${combatant.ac ?? "—"}`, cls: "eit-it-static-stat" });
+
+		row2.createEl("td", { cls: "eit-it-spacer-cell" });
+
+		const condCell = row2.createEl("td", { cls: "eit-it-value-cell eit-it-cell-conditions" });
 		for (const cond of combatant.conditions) {
 			const badge = condCell.createEl("span", {
 				text: cond.label,
@@ -268,11 +280,11 @@ export class TrackerView extends ItemView {
 			});
 		};
 
-		// ---- Row 3: HP | HP Toggle (Damage/Heal quick entry) ----
-		const hpCell = grid.createDiv({ cls: "eit-it-cell" });
-		const hpInput = hpCell.createEl("input", {
-			attr: { type: "number", style: "width: 4em;" },
-		});
+		// ---- Row 3: HP | spacer | HP Toggle (Damage/Heal quick entry) ----
+		const row3 = table.createEl("tr");
+
+		const hpCell = row3.createEl("td", { cls: "eit-it-label-cell" });
+		const hpInput = hpCell.createEl("input", { attr: { type: "number", style: "width: 4em;" } });
 		hpInput.value = String(combatant.currentHp);
 		hpInput.onchange = () => {
 			const val = parseInt(hpInput.value, 10);
@@ -285,7 +297,9 @@ export class TrackerView extends ItemView {
 		};
 		hpCell.createEl("span", { text: `/ ${combatant.maxHp}`, cls: "eit-it-maxhp" });
 
-		const hpToggleCell = grid.createDiv({ cls: "eit-it-cell eit-it-cell-hptoggle" });
+		row3.createEl("td", { cls: "eit-it-spacer-cell" });
+
+		const hpToggleCell = row3.createEl("td", { cls: "eit-it-value-cell" });
 		const mode = this.hpModeByCombatant.get(combatant.id) ?? "damage";
 		const modeBtn = hpToggleCell.createEl("button", {
 			text: mode === "damage" ? "Dmg" : "Heal",
@@ -294,14 +308,12 @@ export class TrackerView extends ItemView {
 		const deltaInput = hpToggleCell.createEl("input", {
 			attr: { type: "number", placeholder: "amount", style: "width: 4.5em;" },
 		});
-
 		modeBtn.onclick = () => {
 			const current = this.hpModeByCombatant.get(combatant.id) ?? "damage";
 			const next: HpMode = current === "damage" ? "heal" : "damage";
 			this.hpModeByCombatant.set(combatant.id, next);
 			modeBtn.setText(next === "damage" ? "Dmg" : "Heal");
 		};
-
 		const applyDelta = () => {
 			const amount = parseInt(deltaInput.value, 10);
 			if (isNaN(amount) || amount === 0) return;
@@ -323,9 +335,11 @@ export class TrackerView extends ItemView {
 			if (e.key === "Enter") applyDelta();
 		};
 
-		// ---- Row 4: LR | LA (only if the creature has either) ----
-		if (combatant.legendaryResistanceMax > 0 || combatant.legendaryActionsMax > 0) {
-			const lrCell = grid.createDiv({ cls: "eit-it-cell" });
+		// ---- Row 4: LR | spacer | LA (only if applicable) ----
+		if (hasLegendary) {
+			const row4 = table.createEl("tr");
+
+			const lrCell = row4.createEl("td", { cls: "eit-it-label-cell" });
 			if (combatant.legendaryResistanceMax > 0) {
 				lrCell.createEl("span", {
 					text: `LR ${combatant.legendaryResistanceCurrent}/${combatant.legendaryResistanceMax}`,
@@ -346,7 +360,9 @@ export class TrackerView extends ItemView {
 				};
 			}
 
-			const laCell = grid.createDiv({ cls: "eit-it-cell" });
+			row4.createEl("td", { cls: "eit-it-spacer-cell" });
+
+			const laCell = row4.createEl("td", { cls: "eit-it-value-cell" });
 			if (combatant.legendaryActionsMax > 0) {
 				laCell.createEl("span", {
 					text: `LA ${combatant.legendaryActionsCurrent}/${combatant.legendaryActionsMax}`,
