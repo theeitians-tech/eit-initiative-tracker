@@ -1,0 +1,138 @@
+.eit-it-view {
+	padding: 8px;
+}
+
+.eit-it-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	align-items: center;
+	margin-bottom: 10px;
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.eit-it-round-badge {
+	margin-left: auto;
+	font-weight: 600;
+	opacity: 0.8;
+}
+
+.eit-it-danger-btn {
+	color: var(--text-error);
+}
+
+.eit-it-empty {
+	opacity: 0.7;
+	font-size: 0.9em;
+}
+
+.eit-it-combatant-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.eit-it-row {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 6px 8px;
+}
+
+.eit-it-row-active {
+	border-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+}
+
+.eit-it-row-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.eit-it-row-name {
+	font-weight: 600;
+	flex: 1;
+}
+
+.eit-it-inline-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 0.8em;
+	opacity: 0.8;
+}
+
+.eit-it-remove-btn {
+	color: var(--text-error);
+	font-weight: 700;
+	line-height: 1;
+}
+
+.eit-it-row-stats {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin-top: 4px;
+}
+
+.eit-it-maxhp {
+	opacity: 0.7;
+	font-size: 0.85em;
+}
+
+.eit-it-row-legendary {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	margin-top: 4px;
+	font-size: 0.85em;
+}
+
+.eit-it-row-conditions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px;
+	margin-top: 4px;
+}
+
+.eit-it-condition-badge {
+	background: var(--background-modifier-hover);
+	border-radius: 4px;
+	padding: 1px 6px;
+	font-size: 0.8em;
+}
+
+.eit-it-condition-remove {
+	cursor: pointer;
+	opacity: 0.7;
+}
+
+.eit-it-picker input[type="text"].eit-it-search {
+	width: 100%;
+	margin-bottom: 8px;
+}
+
+.eit-it-list {
+	max-height: 220px;
+	overflow-y: auto;
+	margin-bottom: 8px;
+}
+
+.eit-it-row-picker {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 3px 0;
+}
+
+.eit-it-row-picker .eit-it-row-name {
+	flex: 1;
+}
+
+.eit-it-done-btn {
+	margin-top: 8px;
+}

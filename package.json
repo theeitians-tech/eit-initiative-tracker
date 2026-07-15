@@ -1,0 +1,19 @@
+{
+	"name": "eit-initiative-tracker",
+	"version": "1.0.0",
+	"description": "Vault-native initiative tracker for Eit.",
+	"main": "main.js",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "node esbuild.config.mjs production"
+	},
+	"license": "MIT",
+	"devDependencies": {
+		"@types/node": "^20.11.5",
+		"builtin-modules": "^3.3.0",
+		"esbuild": "^0.19.11",
+		"obsidian": "latest",
+		"tslib": "2.4.0",
+		"typescript": "^5.3.3"
+	}
+}
