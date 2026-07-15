@@ -1,7 +1,7 @@
 {
 	"id": "eit-initiative-tracker",
 	"name": "Eit Initiative Tracker",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"minAppVersion": "1.4.0",
 	"description": "Vault-native initiative tracker for Eit: pulls creatures and players straight from your #bestiary and #PC notes.",
 	"author": "Kesean",
