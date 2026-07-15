@@ -7,9 +7,15 @@ import { syncPlayerCurrentHp } from "./sync";
 
 export const VIEW_TYPE_TRACKER = "eit-initiative-tracker-view";
 
+type HpMode = "damage" | "heal";
+
 export class TrackerView extends ItemView {
 	store: EncounterStore;
 	unsubscribe: (() => void) | null = null;
+
+	// UI-only state that shouldn't be persisted or trigger a full re-render
+	// by itself — which Damage/Heal mode each row's quick-entry is in.
+	private hpModeByCombatant: Map<string, HpMode> = new Map();
 
 	constructor(leaf: WorkspaceLeaf, store: EncounterStore) {
 		super(leaf);
@@ -58,7 +64,7 @@ export class TrackerView extends ItemView {
 
 		if (sorted.length === 0) {
 			container.createEl("p", {
-				text: "No combatants yet. Click \"Add Combatants\" to pull from your #bestiary and #PC notes.",
+				text: 'No combatants yet. Click "Add Combatants" to pull from your #bestiary and #PC notes.',
 				cls: "eit-it-empty",
 			});
 		} else {
@@ -77,25 +83,25 @@ export class TrackerView extends ItemView {
 		const addBtn = toolbar.createEl("button", { text: "Add Combatants" });
 		addBtn.onclick = () => new AddCombatantsModal(this.app, this.store).open();
 
-		const rollBtn = toolbar.createEl("button", { text: "Roll Monsters" });
-		rollBtn.onclick = () => this.rollMonsters();
+		const rollBtn = toolbar.createEl("button", { text: "Roll Initiative" });
+		rollBtn.onclick = () => this.rollInitiative();
 
 		const nextBtn = toolbar.createEl("button", { text: "Next Turn" });
 		nextBtn.onclick = () => this.nextTurn();
 
-		const resetBtn = toolbar.createEl("button", {
-			text: "Reset Encounter",
+		const endBtn = toolbar.createEl("button", {
+			text: "End Encounter",
 			cls: "eit-it-danger-btn",
 		});
-		resetBtn.onclick = () => this.resetEncounter();
+		endBtn.onclick = () => this.endEncounter();
 
-		toolbar.createEl("span", {
+		container.createDiv({
 			text: `Round ${this.store.state.round}`,
 			cls: "eit-it-round-badge",
 		});
 	}
 
-	private rollMonsters() {
+	private rollInitiative() {
 		let rolledAny = false;
 		this.store.update((s) => {
 			for (const c of s.combatants) {
@@ -117,6 +123,8 @@ export class TrackerView extends ItemView {
 		}
 
 		this.store.update((s) => {
+			let roundAdvanced = false;
+
 			if (!s.active) {
 				s.active = true;
 				s.activeCombatantId = sorted[0].id;
@@ -128,34 +136,34 @@ export class TrackerView extends ItemView {
 				} else if (nextIndex >= sorted.length) {
 					nextIndex = 0;
 					s.round += 1;
+					roundAdvanced = true;
 				}
 				s.activeCombatantId = sorted[nextIndex].id;
 			}
 
-			// Refill legendary actions for whoever's turn it now is.
-			const active = s.combatants.find((c) => c.id === s.activeCombatantId);
-			if (active && active.legendaryActionsMax > 0) {
-				active.legendaryActionsCurrent = active.legendaryActionsMax;
+			// Legendary Actions refill for everyone at the start of a new
+			// round (not per-turn — simpler to track at the table).
+			if (roundAdvanced) {
+				for (const c of s.combatants) {
+					if (c.legendaryActionsMax > 0) {
+						c.legendaryActionsCurrent = c.legendaryActionsMax;
+					}
+				}
 			}
 		});
 	}
 
-	private resetEncounter() {
-		if (!confirm("Clear the entire encounter? This can't be undone.")) return;
+	private endEncounter() {
+		if (!confirm("End the encounter and clear all combatants? This can't be undone.")) return;
 		this.store.update((s) => {
 			s.combatants = [];
 			s.round = 1;
 			s.activeCombatantId = null;
 			s.active = false;
 		});
+		this.hpModeByCombatant.clear();
 	}
 
-	/**
-	 * If the given combatant is a player tied to a real vault note, writes
-	 * their current HP back to that note's **Current HP** line. Silent on
-	 * success (this runs after every HP edit); surfaces a Notice if the
-	 * write fails so the sheet doesn't silently fall out of sync.
-	 */
 	private async syncIfPlayer(id: string, newHp: number) {
 		const c = this.store.state.combatants.find((x) => x.id === id);
 		if (!c || c.kind !== "player" || !c.sourcePath) return;
@@ -168,90 +176,22 @@ export class TrackerView extends ItemView {
 
 	private renderRow(list: HTMLElement, combatant: Combatant) {
 		const row = list.createDiv({ cls: "eit-it-row" });
-		if (this.store.state.activeCombatantId === combatant.id) {
-			row.addClass("eit-it-row-active");
-		}
+		const isActive = this.store.state.activeCombatantId === combatant.id;
+		if (isActive) row.addClass("eit-it-row-active");
 
-		// ---- Header line: name, initiative, remove ----
-		const header = row.createDiv({ cls: "eit-it-row-header" });
+		row.createDiv({ cls: "eit-it-turn-indicator" });
 
-		header.createEl("span", { text: combatant.name, cls: "eit-it-row-name" });
+		const grid = row.createDiv({ cls: "eit-it-row-grid" });
 
-		const initLabel = header.createEl("label", { text: "Init", cls: "eit-it-inline-label" });
-		const initInput = initLabel.createEl("input", {
-			attr: { type: "number", style: "width: 3.5em;" },
-		});
-		initInput.value = combatant.initiative === null ? "" : String(combatant.initiative);
-		initInput.onchange = () => {
-			const val = initInput.value.trim();
-			this.store.update((s) => {
-				const c = s.combatants.find((x) => x.id === combatant.id);
-				if (c) c.initiative = val === "" ? null : parseInt(val, 10);
-			});
-		};
-
-		const removeBtn = header.createEl("button", { text: "×", cls: "eit-it-remove-btn" });
-		removeBtn.onclick = () => {
-			this.store.update((s) => {
-				s.combatants = s.combatants.filter((c) => c.id !== combatant.id);
-			});
-		};
-
-		// ---- Stats line: AC, HP, HP delta ----
-		const stats = row.createDiv({ cls: "eit-it-row-stats" });
-
-		const acLabel = stats.createEl("label", { text: "AC", cls: "eit-it-inline-label" });
-		const acInput = acLabel.createEl("input", {
-			attr: { type: "number", style: "width: 3em;" },
-		});
-		acInput.value = combatant.ac === null ? "" : String(combatant.ac);
-		acInput.onchange = () => {
-			const val = acInput.value.trim();
-			this.store.update((s) => {
-				const c = s.combatants.find((x) => x.id === combatant.id);
-				if (c) c.ac = val === "" ? null : parseInt(val, 10);
-			});
-		};
-
-		const hpLabel = stats.createEl("label", { text: "HP", cls: "eit-it-inline-label" });
-		const hpInput = hpLabel.createEl("input", {
-			attr: { type: "number", style: "width: 4em;" },
-		});
-		hpInput.value = String(combatant.currentHp);
-		hpInput.onchange = () => {
-			const val = parseInt(hpInput.value, 10);
-			this.store.update((s) => {
-				const c = s.combatants.find((x) => x.id === combatant.id);
-				if (c && !isNaN(val)) c.currentHp = val;
-			});
-			const updated = this.store.state.combatants.find((c) => c.id === combatant.id);
-			if (updated) void this.syncIfPlayer(updated.id, updated.currentHp);
-		};
-		stats.createEl("span", { text: `/ ${combatant.maxHp}`, cls: "eit-it-maxhp" });
-
-		const deltaInput = stats.createEl("input", {
-			attr: {
-				type: "number",
-				placeholder: "±dmg/heal",
-				style: "width: 5.5em;",
-			},
-		});
-		const applyDeltaBtn = stats.createEl("button", { text: "Apply" });
-		applyDeltaBtn.onclick = () => {
-			const delta = parseInt(deltaInput.value, 10);
-			if (isNaN(delta)) return;
-			this.store.update((s) => {
-				const c = s.combatants.find((x) => x.id === combatant.id);
-				if (c) c.currentHp = Math.max(0, c.currentHp + delta);
-			});
-			deltaInput.value = "";
-			const updated = this.store.state.combatants.find((c) => c.id === combatant.id);
-			if (updated) void this.syncIfPlayer(updated.id, updated.currentHp);
-		};
-
+		// ---- Row 1: Name | Initiative ----
+		const nameCell = grid.createDiv({ cls: "eit-it-cell eit-it-cell-name" });
+		nameCell.createEl("span", { text: combatant.name, cls: "eit-it-row-name" });
 		if (combatant.isGroup) {
-			const splitBtn = stats.createEl("button", { text: "Split into individuals" });
-			splitBtn.onclick = () => {
+			const splitLink = nameCell.createEl("span", {
+				text: " (split)",
+				cls: "eit-it-split-link",
+			});
+			splitLink.onclick = () => {
 				this.store.update((s) => {
 					const idx = s.combatants.findIndex((c) => c.id === combatant.id);
 					if (idx === -1) return;
@@ -261,48 +201,36 @@ export class TrackerView extends ItemView {
 			};
 		}
 
-		// ---- Legendary line (only if applicable) ----
-		if (combatant.legendaryResistanceMax > 0 || combatant.legendaryActionsMax > 0) {
-			const legendary = row.createDiv({ cls: "eit-it-row-legendary" });
+		const initCell = grid.createDiv({ cls: "eit-it-cell eit-it-cell-init" });
+		const initInput = initCell.createEl("input", {
+			attr: { type: "number", style: "width: 3.5em;" },
+			cls: "eit-it-init-input",
+		});
+		initInput.value = combatant.initiative === null ? "" : String(combatant.initiative);
+		initInput.onchange = () => {
+			const val = initInput.value.trim();
+			this.store.update((s) => {
+				const c = s.combatants.find((x) => x.id === combatant.id);
+				if (c) c.initiative = val === "" ? null : parseInt(val, 10);
+			});
+		};
+		const removeBtn = initCell.createEl("button", { text: "×", cls: "eit-it-remove-btn" });
+		removeBtn.onclick = () => {
+			this.store.update((s) => {
+				s.combatants = s.combatants.filter((c) => c.id !== combatant.id);
+			});
+		};
 
-			if (combatant.legendaryResistanceMax > 0) {
-				legendary.createEl("span", {
-					text: `LR ${combatant.legendaryResistanceCurrent}/${combatant.legendaryResistanceMax}`,
-				});
-				const lrMinus = legendary.createEl("button", { text: "-1 LR" });
-				lrMinus.onclick = () => {
-					this.store.update((s) => {
-						const c = s.combatants.find((x) => x.id === combatant.id);
-						if (c) c.legendaryResistanceCurrent = Math.max(0, c.legendaryResistanceCurrent - 1);
-					});
-				};
-				const lrReset = legendary.createEl("button", { text: "Reset LR" });
-				lrReset.onclick = () => {
-					this.store.update((s) => {
-						const c = s.combatants.find((x) => x.id === combatant.id);
-						if (c) c.legendaryResistanceCurrent = c.legendaryResistanceMax;
-					});
-				};
-			}
+		// ---- Row 2: AC (static) | Condition ----
+		const acCell = grid.createDiv({ cls: "eit-it-cell" });
+		acCell.createEl("span", {
+			text: `AC ${combatant.ac ?? "—"}`,
+			cls: "eit-it-static-stat",
+		});
 
-			if (combatant.legendaryActionsMax > 0) {
-				legendary.createEl("span", {
-					text: `LA ${combatant.legendaryActionsCurrent}/${combatant.legendaryActionsMax}`,
-				});
-				const laMinus = legendary.createEl("button", { text: "-1 LA" });
-				laMinus.onclick = () => {
-					this.store.update((s) => {
-						const c = s.combatants.find((x) => x.id === combatant.id);
-						if (c) c.legendaryActionsCurrent = Math.max(0, c.legendaryActionsCurrent - 1);
-					});
-				};
-			}
-		}
-
-		// ---- Conditions ----
-		const conditionsRow = row.createDiv({ cls: "eit-it-row-conditions" });
+		const condCell = grid.createDiv({ cls: "eit-it-cell eit-it-cell-conditions" });
 		for (const cond of combatant.conditions) {
-			const badge = conditionsRow.createEl("span", {
+			const badge = condCell.createEl("span", {
 				text: cond.label,
 				cls: "eit-it-condition-badge",
 			});
@@ -317,8 +245,7 @@ export class TrackerView extends ItemView {
 				});
 			};
 		}
-
-		const addCondSelect = conditionsRow.createEl("select");
+		const addCondSelect = condCell.createEl("select", { cls: "eit-it-cond-select" });
 		addCondSelect.createEl("option", { text: "+ Condition...", attr: { value: "" } });
 		for (const label of STANDARD_CONDITIONS) {
 			addCondSelect.createEl("option", { text: label, attr: { value: label } });
@@ -328,19 +255,110 @@ export class TrackerView extends ItemView {
 			const value = addCondSelect.value;
 			addCondSelect.value = "";
 			if (!value) return;
-
 			let label = value;
 			if (value === "__custom__") {
 				const custom = prompt("Custom condition label:");
 				if (!custom) return;
 				label = custom;
 			}
-
 			const condition: Condition = { id: newId(), label };
 			this.store.update((s) => {
 				const c = s.combatants.find((x) => x.id === combatant.id);
 				if (c) c.conditions.push(condition);
 			});
 		};
+
+		// ---- Row 3: HP | HP Toggle (Damage/Heal quick entry) ----
+		const hpCell = grid.createDiv({ cls: "eit-it-cell" });
+		const hpInput = hpCell.createEl("input", {
+			attr: { type: "number", style: "width: 4em;" },
+		});
+		hpInput.value = String(combatant.currentHp);
+		hpInput.onchange = () => {
+			const val = parseInt(hpInput.value, 10);
+			this.store.update((s) => {
+				const c = s.combatants.find((x) => x.id === combatant.id);
+				if (c && !isNaN(val)) c.currentHp = val;
+			});
+			const updated = this.store.state.combatants.find((c) => c.id === combatant.id);
+			if (updated) void this.syncIfPlayer(updated.id, updated.currentHp);
+		};
+		hpCell.createEl("span", { text: `/ ${combatant.maxHp}`, cls: "eit-it-maxhp" });
+
+		const hpToggleCell = grid.createDiv({ cls: "eit-it-cell eit-it-cell-hptoggle" });
+		const mode = this.hpModeByCombatant.get(combatant.id) ?? "damage";
+		const modeBtn = hpToggleCell.createEl("button", {
+			text: mode === "damage" ? "Dmg" : "Heal",
+			cls: "eit-it-mode-btn",
+		});
+		const deltaInput = hpToggleCell.createEl("input", {
+			attr: { type: "number", placeholder: "amount", style: "width: 4.5em;" },
+		});
+
+		modeBtn.onclick = () => {
+			const current = this.hpModeByCombatant.get(combatant.id) ?? "damage";
+			const next: HpMode = current === "damage" ? "heal" : "damage";
+			this.hpModeByCombatant.set(combatant.id, next);
+			modeBtn.setText(next === "damage" ? "Dmg" : "Heal");
+		};
+
+		const applyDelta = () => {
+			const amount = parseInt(deltaInput.value, 10);
+			if (isNaN(amount) || amount === 0) return;
+			const currentMode = this.hpModeByCombatant.get(combatant.id) ?? "damage";
+			this.store.update((s) => {
+				const c = s.combatants.find((x) => x.id === combatant.id);
+				if (!c) return;
+				if (currentMode === "damage") {
+					c.currentHp = Math.max(0, c.currentHp - Math.abs(amount));
+				} else {
+					c.currentHp = Math.min(c.maxHp, c.currentHp + Math.abs(amount));
+				}
+			});
+			deltaInput.value = "";
+			const updated = this.store.state.combatants.find((c) => c.id === combatant.id);
+			if (updated) void this.syncIfPlayer(updated.id, updated.currentHp);
+		};
+		deltaInput.onkeydown = (e) => {
+			if (e.key === "Enter") applyDelta();
+		};
+
+		// ---- Row 4: LR | LA (only if the creature has either) ----
+		if (combatant.legendaryResistanceMax > 0 || combatant.legendaryActionsMax > 0) {
+			const lrCell = grid.createDiv({ cls: "eit-it-cell" });
+			if (combatant.legendaryResistanceMax > 0) {
+				lrCell.createEl("span", {
+					text: `LR ${combatant.legendaryResistanceCurrent}/${combatant.legendaryResistanceMax}`,
+				});
+				const lrMinus = lrCell.createEl("button", { text: "-1" });
+				lrMinus.onclick = () => {
+					this.store.update((s) => {
+						const c = s.combatants.find((x) => x.id === combatant.id);
+						if (c) c.legendaryResistanceCurrent = Math.max(0, c.legendaryResistanceCurrent - 1);
+					});
+				};
+				const lrReset = lrCell.createEl("button", { text: "Reset" });
+				lrReset.onclick = () => {
+					this.store.update((s) => {
+						const c = s.combatants.find((x) => x.id === combatant.id);
+						if (c) c.legendaryResistanceCurrent = c.legendaryResistanceMax;
+					});
+				};
+			}
+
+			const laCell = grid.createDiv({ cls: "eit-it-cell" });
+			if (combatant.legendaryActionsMax > 0) {
+				laCell.createEl("span", {
+					text: `LA ${combatant.legendaryActionsCurrent}/${combatant.legendaryActionsMax}`,
+				});
+				const laMinus = laCell.createEl("button", { text: "-1" });
+				laMinus.onclick = () => {
+					this.store.update((s) => {
+						const c = s.combatants.find((x) => x.id === combatant.id);
+						if (c) c.legendaryActionsCurrent = Math.max(0, c.legendaryActionsCurrent - 1);
+					});
+				};
+			}
+		}
 	}
 }
