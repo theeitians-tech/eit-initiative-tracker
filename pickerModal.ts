@@ -6,7 +6,16 @@ import { EncounterStore } from "./state";
 
 export class AddCombatantsModal extends Modal {
 	store: EncounterStore;
-	searchTerm = "";
+
+	// Cached file lists so we don't re-scan the vault on every keystroke
+	private bestiaryFiles: TFile[] = [];
+	private playerFiles: TFile[] = [];
+
+	// DOM refs we need to update without rebuilding
+	private playerListEl: HTMLElement | null = null;
+	private bestiaryListEl: HTMLElement | null = null;
+	private playerSearchEl: HTMLInputElement | null = null;
+	private bestiarySearchEl: HTMLInputElement | null = null;
 
 	constructor(app: App, store: EncounterStore) {
 		super(app);
@@ -14,114 +23,138 @@ export class AddCombatantsModal extends Modal {
 	}
 
 	onOpen() {
-		this.render();
+		this.bestiaryFiles = getBestiaryFiles(this.app);
+		this.playerFiles = getPlayerFiles(this.app);
+		this.buildLayout();
 	}
 
-	async render() {
+	/**
+	 * Builds the modal structure once. Search inputs update only the
+	 * dropdown lists beneath them — no full re-render, no focus loss.
+	 */
+	private buildLayout() {
 		const { contentEl } = this;
-		const scrollPos = contentEl.scrollTop;
 		contentEl.empty();
 		contentEl.addClass("eit-it-picker");
 
 		contentEl.createEl("h2", { text: "Add Combatants" });
 
-		const searchInput = contentEl.createEl("input", {
-			attr: { type: "text", placeholder: "Filter by name..." },
+		// ---- Players section ----
+		contentEl.createEl("h3", { text: "Players" });
+
+		this.playerSearchEl = contentEl.createEl("input", {
+			attr: { type: "text", placeholder: "Search players..." },
 			cls: "eit-it-search",
 		});
-		searchInput.value = this.searchTerm;
-		searchInput.oninput = () => {
-			this.searchTerm = searchInput.value;
-			this.render();
-		};
+		this.playerListEl = contentEl.createDiv({ cls: "eit-it-dropdown-list" });
 
-		const term = this.searchTerm.trim().toLowerCase();
+		this.playerSearchEl.oninput = () => this.renderPlayerList();
+		this.renderPlayerList();
 
-		// ---- Players ----
-		contentEl.createEl("h3", { text: "Players (#PC)" });
-		const playerFiles = getPlayerFiles(this.app).filter((f) =>
-			f.basename.toLowerCase().includes(term)
-		);
+		// ---- Bestiary section ----
+		contentEl.createEl("h3", { text: "Bestiary" });
 
-		if (playerFiles.length === 0) {
-			contentEl.createEl("p", {
-				text: "No #PC notes found.",
-				cls: "eit-it-empty",
-			});
-		} else {
-			const playerList = contentEl.createDiv({ cls: "eit-it-list" });
-			const checkboxes: { file: TFile; checkbox: HTMLInputElement }[] = [];
+		this.bestiarySearchEl = contentEl.createEl("input", {
+			attr: { type: "text", placeholder: "Search bestiary..." },
+			cls: "eit-it-search",
+		});
+		this.bestiaryListEl = contentEl.createDiv({ cls: "eit-it-dropdown-list" });
 
-			for (const file of playerFiles) {
-				const row = playerList.createDiv({ cls: "eit-it-row-picker" });
-				const checkbox = row.createEl("input", { attr: { type: "checkbox" } });
-				row.createEl("span", { text: file.basename });
-				checkboxes.push({ file, checkbox });
-			}
+		this.bestiarySearchEl.oninput = () => this.renderBestiaryList();
+		this.renderBestiaryList();
 
-			const addPlayersBtn = contentEl.createEl("button", {
-				text: "Add Selected Players",
-			});
-			addPlayersBtn.onclick = async () => {
-				const chosen = checkboxes.filter((c) => c.checkbox.checked);
-				if (chosen.length === 0) {
-					new Notice("No players selected.");
-					return;
-				}
-				for (const { file } of chosen) {
-					const content = await this.app.vault.read(file);
-					const parsed = parseStatblock(content, file.path);
-					const combatant = buildPlayerCombatant(parsed);
-					this.store.update((s) => s.combatants.push(combatant));
-				}
-				new Notice(`Added ${chosen.length} player(s).`);
-			};
-		}
-
-		// ---- Bestiary ----
-		contentEl.createEl("h3", { text: "Bestiary (#bestiary)" });
-		const bestiaryFiles = getBestiaryFiles(this.app).filter((f) =>
-			f.basename.toLowerCase().includes(term)
-		);
-
-		if (bestiaryFiles.length === 0) {
-			contentEl.createEl("p", {
-				text: "No #bestiary notes found.",
-				cls: "eit-it-empty",
-			});
-		} else {
-			const bestiaryList = contentEl.createDiv({ cls: "eit-it-list" });
-
-			for (const file of bestiaryFiles) {
-				const row = bestiaryList.createDiv({ cls: "eit-it-row-picker" });
-				row.createEl("span", { text: file.basename, cls: "eit-it-row-name" });
-
-				const qtyInput = row.createEl("input", {
-					attr: { type: "number", min: "1", value: "1", style: "width: 3.5em;" },
-				});
-
-				const addBtn = row.createEl("button", { text: "Add" });
-				addBtn.onclick = async () => {
-					const quantity = Math.max(1, parseInt(qtyInput.value, 10) || 1);
-					const content = await this.app.vault.read(file);
-					const parsed = parseStatblock(content, file.path);
-					const combatant = buildCreatureCombatant(parsed, quantity);
-					this.store.update((s) => s.combatants.push(combatant));
-					new Notice(`Added ${combatant.name}.`);
-				};
-			}
-		}
-
+		// ---- Close button ----
 		const closeBtn = contentEl.createEl("button", {
 			text: "Done",
 			cls: "eit-it-done-btn",
 		});
 		closeBtn.onclick = () => this.close();
+	}
 
-		contentEl.scrollTop = scrollPos;
+	/**
+	 * Rebuilds only the player dropdown list. The search input, headings,
+	 * and bestiary section are untouched — no focus loss.
+	 */
+	private renderPlayerList() {
+		if (!this.playerListEl || !this.playerSearchEl) return;
+		this.playerListEl.empty();
+
+		const term = this.playerSearchEl.value.trim().toLowerCase();
+		const filtered = this.playerFiles.filter((f) =>
+			f.basename.toLowerCase().includes(term)
+		);
+
+		if (filtered.length === 0) {
+			this.playerListEl.createEl("div", {
+				text: term ? "No matching players." : "No #PC notes found.",
+				cls: "eit-it-dropdown-empty",
+			});
+			return;
+		}
+
+		for (const file of filtered) {
+			const row = this.playerListEl.createDiv({ cls: "eit-it-dropdown-item" });
+			row.createEl("span", { text: file.basename, cls: "eit-it-dropdown-name" });
+
+			const addBtn = row.createEl("button", { text: "Add" });
+			addBtn.onclick = async () => {
+				const content = await this.app.vault.read(file);
+				const parsed = parseStatblock(content, file.path);
+				const combatant = buildPlayerCombatant(parsed);
+				this.store.update((s) => s.combatants.push(combatant));
+				new Notice(`Added ${combatant.name}.`);
+				row.addClass("eit-it-dropdown-item-added");
+			};
+		}
+	}
+
+	/**
+	 * Rebuilds only the bestiary dropdown list. Same isolation principle.
+	 */
+	private renderBestiaryList() {
+		if (!this.bestiaryListEl || !this.bestiarySearchEl) return;
+		this.bestiaryListEl.empty();
+
+		const term = this.bestiarySearchEl.value.trim().toLowerCase();
+		const filtered = this.bestiaryFiles.filter((f) =>
+			f.basename.toLowerCase().includes(term)
+		);
+
+		if (filtered.length === 0) {
+			this.bestiaryListEl.createEl("div", {
+				text: term ? "No matching creatures." : "No #bestiary notes found.",
+				cls: "eit-it-dropdown-empty",
+			});
+			return;
+		}
+
+		for (const file of filtered) {
+			const row = this.bestiaryListEl.createDiv({ cls: "eit-it-dropdown-item" });
+			row.createEl("span", { text: file.basename, cls: "eit-it-dropdown-name" });
+
+			const qtyInput = row.createEl("input", {
+				attr: { type: "number", min: "1", value: "1" },
+				cls: "eit-it-qty-input",
+			});
+
+			const addBtn = row.createEl("button", { text: "Add" });
+			addBtn.onclick = async () => {
+				const quantity = Math.max(1, parseInt(qtyInput.value, 10) || 1);
+				const content = await this.app.vault.read(file);
+				const parsed = parseStatblock(content, file.path);
+				const combatant = buildCreatureCombatant(parsed, quantity);
+				this.store.update((s) => s.combatants.push(combatant));
+				new Notice(`Added ${combatant.name}.`);
+				row.addClass("eit-it-dropdown-item-added");
+			};
+		}
 	}
 
 	onClose() {
 		this.contentEl.empty();
+		this.playerListEl = null;
+		this.bestiaryListEl = null;
+		this.playerSearchEl = null;
+		this.bestiarySearchEl = null;
 	}
 }
