@@ -33,4 +33,5 @@ jobs:
             main.js
             manifest.json
             versions.json
+            styles.css
           generate_release_notes: true
