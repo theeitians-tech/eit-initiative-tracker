@@ -164,28 +164,61 @@
 
 /* ---- Picker modal ---- */
 
-.eit-it-picker input[type="text"].eit-it-search {
+.eit-it-picker {
+	padding: 8px;
+}
+
+.eit-it-search {
 	width: 100%;
-	margin-bottom: 8px;
+	margin-bottom: 4px;
 }
 
-.eit-it-list {
-	max-height: 220px;
+.eit-it-dropdown-list {
+	max-height: 200px;
 	overflow-y: auto;
-	margin-bottom: 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	margin-bottom: 14px;
+	background: var(--background-primary);
 }
 
-.eit-it-row-picker {
+.eit-it-dropdown-empty {
+	padding: 8px 10px;
+	opacity: 0.6;
+	font-size: 0.9em;
+}
+
+.eit-it-dropdown-item {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	padding: 3px 0;
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	transition: background 80ms ease;
 }
 
-.eit-it-row-picker .eit-it-row-name {
+.eit-it-dropdown-item:last-child {
+	border-bottom: none;
+}
+
+.eit-it-dropdown-item:hover {
+	background: var(--background-modifier-hover);
+}
+
+.eit-it-dropdown-item-added {
+	opacity: 0.5;
+}
+
+.eit-it-dropdown-name {
 	flex: 1;
+	font-weight: 500;
+}
+
+.eit-it-qty-input {
+	width: 3.5em;
 }
 
 .eit-it-done-btn {
 	margin-top: 8px;
+	width: 100%;
 }
