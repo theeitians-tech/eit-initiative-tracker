@@ -10,7 +10,7 @@ const CURRENT_HP_RE = /\*\*Current HP\*\*\s*(\d+)/i;
 const INITIATIVE_RE = /\*\*Initiative\*\*\s*([+-]?\d+)/i;
 const NAME_RE = /^#\s+(.+)$/m;
 const LEGENDARY_RESISTANCE_RE = /Legendary Resistance[^)\n]*\((\d+)\s*\/\s*Day/i;
-const LEGENDARY_ACTIONS_RE = /can take\s+(\d+)\s+legendary actions/i;
+const LEGENDARY_ACTIONS_RE = /(?:can take|takes|may take|has)\s+(\d+)\s+legendary actions/i;
 
 /**
  * Parses a note's raw markdown body against the shared Creature
