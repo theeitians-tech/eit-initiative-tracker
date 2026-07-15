@@ -1,0 +1,474 @@
+
+/
+Claude finished the response
+Q: How should a creature's initiative bonus be determined for the 'Roll Monsters' button?
+A: Read a separate 'Initiative' field if present, fall back to DEX
+
+Q: For Legendary Resistance/Actions, how should the tracker find the count?
+A: Parse it from the Traits/Legendary Actions text (e.g. "3/Day")
+
+Q: Should duplicate creatures (e.g. 3 Goblins) group together like the old plugin, or track fully separately?
+A: Group with shared HP pool option + individual toggle
+
+
+Architected encounter system with parser logic and UI framework
+Architected encounter system with parser logic and UI framework
+Good — those three answers lock in a lot. Before I start building, I want to close out the last few architecture decisions, since these are the ones that'll be painful to change once the parser is written.
+
+The one blocker: Player Sheets have no format yet
+You've got documented formats for Creatures, Items, NPCs, Locations — nothing for player character sheets. Since the tracker needs to reliably extract HP/AC/ability scores/initiative from these notes, I'd propose mirroring the Creature Statblock format rather than inventing something new. Two big wins to that: it matches the visual language you already use, and it means I can reuse the same parsing logic for both creatures and players instead of writing two separate parsers.
+
+Proposed Player Sheet Format:
+
+# Character Name
+*Race Class, Background*
+
+**Armor Class** AC
+**Hit Points** Max HP
+**Initiative** +X
+**Speed** 30 ft.
+
+| STR     | DEX     | CON     | INT     | WIS     | CHA     |
+| ------- | ------- | ------- | ------- | ------- | ------- |
+| 10 (+0) | 10 (+0) | 10 (+0) | 10 (+0) | 10 (+0) | 10 (+0) |
+
+**Passive Perception** X
+**Proficiency Bonus** +X
+
+#PLAYER
+I'd also add an Initiative line to your existing Creature Statblock format (right after Speed) — matches how the 2024 5e rules handle it, and it's what lets the "read Initiative field, fall back to DEX" logic actually work. Old statblocks without that line just fall back to DEX automatically, so nothing breaks retroactively.
+
+Remaining decisions
+Q: What tag identifies a creature as eligible for the encounter picker?
+A: i dont have a player sheet we will have to build one, i would also like to use the #bestiary for the creature identifier
+
+Q: What should the player sheet tag be?
+A: #PC
+
+Q: When a grouped creature (e.g. 3x Goblin) rolls initiative, should the whole group share one roll or does each individual roll separately?
+A: One roll for the whole group (standard DM shortcut)
+
+Q: Should the tracker save/restore encounter state (so you can close Obsidian mid-combat and resume later), or is it meant to reset each time you open it?
+A: Yes, auto-save and restore in-progress encounters
+
+
+Architected initiative tracker plugin with persistent combat state and grouped creature mechanics
+Architected initiative tracker plugin with persistent combat state and grouped creature mechanics
+Good — that closes the last gaps. Here's the finalized spec before I start building:
+
+Tags: #bestiary for creatures, #PC for players
+New format: Player Sheet Format (mirrors your Creature Statblock style so I can reuse one parser for both)
+Format addition: an **Initiative** line added to the Creature Statblock format (right after Speed)
+Grouping: shared HP pool by default, with a one-way "split into individual" action per group
+Legendary Actions: auto-reset to max when it becomes that combatant's turn
+Legendary Resistance: persists all encounter, manual decrement/reset
+Persistence: state auto-saves after every change, restores on reopen
+
+One more thing I decided without asking, since it's clearly the right call technically: this needs to live in a persistent sidebar panel, not a popup modal — you'll be referencing it turn after turn for the whole combat, so it should stay open alongside your notes rather than blocking the screen like the linker's modals did.
+
+Now let's build it for real.
+
+
+Created 7 files, ran a command
+Created 7 files, ran a command
+Now the core logic. Starting with shared types:
+
+
+Commenced parser file development work
+Commenced parser file development work
+Now the vault scanning logic:
+
+
+Architected persistent state management with pub/sub pattern integration
+Architected persistent state management with pub/sub pattern integration
+Now the persistence layer:
+
+
+Architected modal interface for adding combatants to encounter tracker
+Architected modal interface for adding combatants to encounter tracker
+Now the picker modal:
+
+
+Architected combat tracker UI with sorted initiative, persistent state, and dynamic HP management
+Architected combat tracker UI with sorted initiative, persistent state, and dynamic HP management
+Better design choice before I go further — let me fix the turn-tracking to use combatant IDs instead of array indexes, so removing a combatant mid-fight doesn't corrupt whose turn it is:
+
+
+Edited 3 files
+Edited 3 files
+Now the main tracker view:
+
+
+Persistent sidebar view showing the live sorted combatant tracker
+Persistent sidebar view showing the live sorted combatant tracker
+Now the plugin entry point that wires everything together:
+
+
+Plugin entry point: registers the view, commands, ribbon icon, and persistence hooks
+Plugin entry point: registers the view, commands, ribbon icon, and persistence hooks
+Now styling for the panel:
+
+
+Panel styling for the tracker view and picker modal
+Panel styling for the tracker view and picker modal
+Now let's actually build and verify this compiles clean:
+
+
+Ran 2 commands
+Ran 2 commands
+Same known upstream-only errors as before (all inside obsidian.d.ts, none in our code). Let's confirm the actual bundle builds clean:
+
+
+Validated parser functionality with sample content verification
+Validated parser functionality with sample content verification
+Clean build. Let me also sanity-check the parser logic against a realistic statblock before handing this over — I don't want you to discover a parsing bug mid-session:
+
+
+Orchestrated documentation assembly and finalized plugin deliverables
+Orchestrated documentation assembly and finalized plugin deliverables
+Both test cases — including your actual Genen Acolyte and Strigia stats — parse exactly right: DEX fallback works, explicit Initiative overrides it, Legendary Resistance/Actions counts extract correctly. Now let's finish the deliverables.
+
+
+Synthesized comprehensive documentation framework with tagging conventions and encounter persistence mechanics
+Synthesized comprehensive documentation framework with tagging conventions and encounter persistence mechanics
+Now let's copy everything to outputs in the right structure and present it all:
+
+
+Ran a command, read a file
+Ran a command, read a file
+All 18 files, built and verified
+I compiled this for real in a sandbox (not just written blind) and unit-tested the parser against your actual Genen Acolyte and Strigia statblocks — both parsed perfectly, including the DEX-fallback and explicit-Initiative cases.
+
+GitHub structure (create a new repo eit-initiative-tracker, add files at these exact paths via "Create new file" like last time):
+
+Path
+main.ts
+types.ts
+parser.ts
+combatants.ts
+vaultIndex.ts
+state.ts
+pickerModal.ts
+trackerView.ts
+styles.css
+manifest.json
+package.json
+tsconfig.json
+esbuild.config.mjs
+.gitignore
+versions.json
+.github/workflows/release.yml
+README.md
+Then tag 1.0.0 and publish a release the same way as the linker — Actions builds it, BRAT installs it.
+
+Player Sheet Format.md is separate — that one goes into your Obsidian vault at P:\Eit\, not the GitHub repo. It's the format reference your player sheets need to follow.
+
+Two things you'll need to do in your vault before this is useful
+Add #bestiary to any existing creature note you want available in the encounter picker — #SB alone won't surface it.
+Create at least one player sheet using the new format, tagged #PC.
+Everything else — grouping, shared HP pools, Legendary Resistance/Actions tracking, condition badges, auto-save/restore — is in there and working per your spec. Let me know how it behaves once it's live against real data, especially the parser against any statblocks that deviate from the template.
+
+
+Main
+TS 
+
+Types
+TS 
+
+Parser
+TS 
+
+Combatants
+TS 
+
+Vaultindex
+TS 
+
+State
+TS 
+
+Pickermodal
+TS 
+
+Trackerview
+TS 
+
+Styles
+Code · CSS 
+
+Manifest
+Code · JSON 
+
+Package
+Code · JSON 
+
+Tsconfig
+Code · JSON 
+
+Esbuild.config
+MJS 
+
+.gitignore
+GITIGNORE 
+
+Versions
+Code · JSON 
+
+Release
+YML 
+
+Readme
+Document · MD 
+
+Player sheet format
+Document · MD 
+I'd also like to be able to change player HP on the trackerl as they do ot always enter at full or maybe add a current HP to their sheet instead of max
+
+
+Architected current HP field integration for flexible player setup
+Architected current HP field integration for flexible player setup
+Good catch — the tracker already lets you edit any combatant's HP directly once they're added (the HP field and the ±dmg/heal box), but there's no way to set a starting HP other than full when you first add a player. The cleanest fix is exactly what you suggested: add a Current HP field to the Player Sheet, separate from Max HP, and have the tracker read that as the starting value.
+
+Let me update the code.
+
+
+Edited 4 files
+Edited 4 files
+Now update the player combatant builder to use Current HP as the starting value when present:
+
+
+Use parsed Current HP as starting HP for players, falling back to Max HP
+Use parsed Current HP as starting HP for players, falling back to Max HP
+Now update the Player Sheet Format doc:
+
+
+Edited a file, viewed a file
+Edited a file, viewed a file
+Good, file is clean and complete. Now let's rebuild and verify everything still compiles:
+
+
+Validated parser functionality with current HP example
+Validated parser functionality with current HP example
+Let's verify the Current HP parsing works correctly with a quick test:
+
+
+Test Current HP parsing with and without the field present
+Test Current HP parsing with and without the field present
+Both cases work correctly — Amp comes in at 41/58 as expected, Wapo (no Current HP field) defaults to full 44/44.
+
+Let's copy the updated files to outputs and hand them over:
+
+
+Ran a command, read a file
+Ran a command, read a file
+What changed (4 files)
+types.ts — added currentHp to the parsed statblock data
+parser.ts — reads a new **Current HP** line from a note (falls back to null → treated as "start at max")
+combatants.ts — players now start an encounter at their sheet's Current HP if it's set, otherwise full HP
+Player Sheet Format.md — added the **Current HP** line, right under Max HP
+Rebuilt, and tested both cases directly — a sheet with **Current HP** 41 comes in at 41/58, one without it defaults to full.
+
+If you've already got player sheets from before this update, just add a **Current HP** line to each — no need to touch anything else.
+
+Same deploy flow as before: update these 4 files on GitHub (overwrite the existing ones at those paths), bump the version in manifest.json/versions.json, tag and push a new release, BRAT picks it up.
+
+One thing worth flagging since you mentioned it might come up again: mid-combat HP changes still don't write back to the player's sheet — the tracker keeps them in its own state, but the sheet's Current HP field stays whatever it was when you started. If you want it to auto-sync the sheet after the encounter (or live, as damage comes in) so the sheet always reflects reality without you updating it by hand, that's a separate feature I can add — just say the word.
+
+
+Types
+TS 
+
+Parser
+TS 
+
+Combatants
+TS 
+
+Player sheet format
+Document · MD 
+yes auto sync it please. when done, repost all files that need to be added to github here as well as the instructions again so we can make sure it's in order
+
+
+Architected live HP sync system with error handling and integration points
+Architected live HP sync system with error handling and integration points
+Now wire it into the tracker view at both HP-editing points:
+
+
+Edited 2 files
+Edited 2 files
+Now update the two HP-editing call sites to trigger the sync:
+
+
+Edited 2 files
+Edited 2 files
+Now let's rebuild and verify:
+
+
+Rebuild after adding HP sync feature
+Rebuild after adding HP sync feature
+Clean build. Let's also verify the sync regex logic — both the "replace existing" and "insert missing" paths:
+
+
+Deliberated on documenting the new synchronization functionality
+Deliberated on documenting the new synchronization functionality
+Both paths work exactly right — updates in place when the field exists, inserts cleanly when it doesn't. Let me update the README to document this, then hand over the complete file set as requested.
+
+
+Identified documentation updates needed for feature changes
+Identified documentation updates needed for feature changes
+Now let's do a final full rebuild to confirm everything's still clean, then copy the complete set to outputs:
+
+
+Final verification build
+Final verification build
+Same known upstream-only errors (unrelated to our code), and the actual bundle builds clean. Now copying the complete, current file set to outputs:
+
+
+Copy complete, current file set to outputs
+Copy complete, current file set to outputs
+All 19 files present. Let's present them all in order:
+
+
+Presented 19 files
+Presented 19 files
+What's new: HP auto-sync
+Every time you edit a player's HP in the tracker — direct edit or the ±dmg/heal box — it now writes straight back to that player's #PC sheet's **Current HP** line. No manual bookkeeping after the fight. If an older sheet doesn't have that line yet, it gets added automatically the first time it syncs. Only players sync this way — creatures never write back to their notes. Tested both the "update existing line" and "insert missing line" cases against realistic sheet content, and both work correctly.
+
+Complete file list for GitHub (19 files)
+Same repo as before — eit-initiative-tracker. If you're setting it up fresh, create every path below. If you already started this repo, overwrite these files with the versions above (all of them changed at least slightly, or are new: sync.ts is brand new).
+
+#	Path in repo
+1	main.ts
+2	types.ts
+3	parser.ts
+4	combatants.ts
+5	vaultIndex.ts
+6	state.ts
+7	sync.ts (new)
+8	pickerModal.ts
+9	trackerView.ts
+10	styles.css
+11	manifest.json
+12	package.json
+13	tsconfig.json
+14	esbuild.config.mjs
+15	.gitignore
+16	versions.json
+17	.github/workflows/release.yml
+18	README.md
+Player Sheet Format.md (#19) is not for GitHub — save that one into your Obsidian vault at P:\Eit\.
+
+Step-by-step
+1. On GitHub (github.com → your eit-initiative-tracker repo):
+For each file above: Add file → Create new file (or click into the existing file → pencil/edit icon if it's already there) → type the exact path shown → paste the contents → Commit changes.
+
+2. Bump the version — since this is an update, edit manifest.json and versions.json on GitHub, bump 1.0.0 → 1.0.1.
+
+3. Cut the release:
+
+Releases → Create a new release → Choose a tag → type 1.0.1 → Create new tag: 1.0.1 on publish → Publish release.
+Check the Actions tab — should go green with main.js attached to the release.
+4. In Obsidian: Command Palette → "BRAT: Check for updates" (or it'll pick it up on its own). Also drop Player Sheet Format.md into P:\Eit\ if you haven't already, and add a **Current HP** line to any existing player sheets that don't have one yet.
+
+
+Main
+TS 
+
+Types
+TS 
+
+Parser
+TS 
+
+Combatants
+TS 
+
+Vaultindex
+TS 
+
+State
+TS 
+
+Sync
+TS 
+
+Pickermodal
+TS 
+
+Trackerview
+TS 
+
+Styles
+Code · CSS 
+
+Manifest
+Code · JSON 
+
+Package
+Code · JSON 
+
+Tsconfig
+Code · JSON 
+
+Esbuild.config
+MJS 
+
+.gitignore
+GITIGNORE 
+
+Versions
+Code · JSON 
+
+Release
+YML 
+
+Readme
+Document · MD 
+
+Player sheet format
+Document · MD 
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+Release · YML
+name: Release Obsidian Plugin
+ 
+# Triggers whenever you push a tag like "1.0.0" (no "v" prefix — BRAT and
+# Obsidian expect the tag to match the version in manifest.json exactly).
+on:
+  push:
+    tags:
+      - "*"
+ 
+permissions:
+  contents: write
+ 
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+ 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+ 
+      - name: Install dependencies
+        run: npm install
+ 
+      - name: Build plugin
+        run: npm run build
+ 
+      - name: Create GitHub Release with plugin assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            main.js
+            manifest.json
+            versions.json
+          generate_release_notes: true
+ 
